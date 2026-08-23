@@ -33,6 +33,9 @@ interface TranslationPreferences {
     /** Prompt template for the LLM providers. Blank = [TranslationConfig.DEFAULT_PROMPT]. */
     fun translationPrompt(): Preference<String>
 
+    /** System-role instructions for the main button. Blank = the translator's own. */
+    fun translationSystemPrompt(): Preference<String>
+
     // -------------------------------------------------------------------------
     // Second button — off by default, so the popup keeps a single button until
     // the user asks for two. Shares the API keys and target language above.
@@ -41,9 +44,15 @@ interface TranslationPreferences {
     /** One of [TranslationProviders], or blank to hide the second button. */
     fun translationSecondaryProvider(): Preference<String>
 
-    /** Prompt for the second button. Blank = [TranslationConfig.DEFAULT_GRAMMAR_PROMPT]. */
+    /** User message for the second button. Blank = [TranslationConfig.DEFAULT_SECONDARY_PROMPT]. */
     fun translationSecondaryPrompt(): Preference<String>
 
-    /** Caption on the second button. Blank = "Grammar". */
+    /**
+     * System-role instructions for the second button.
+     * Blank = [TranslationConfig.DEFAULT_BREAKDOWN_SYSTEM_PROMPT].
+     */
+    fun translationSecondarySystemPrompt(): Preference<String>
+
+    /** Caption on the second button. Blank = "Breakdown". */
     fun translationSecondaryLabel(): Preference<String>
 }

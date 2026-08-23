@@ -20,7 +20,12 @@ object GeminiTranslator : Translator {
     private data class Payload(
         val contents: List<Content>,
         val generationConfig: GenerationConfig,
+        /** Omitted when null, so a blank system prompt costs nothing. */
+        val systemInstruction: SystemInstruction? = null,
     )
+
+    @Serializable
+    private data class SystemInstruction(val parts: List<Part>)
 
     @Serializable
     private data class Content(val parts: List<Part>, val role: String = "user")
@@ -61,7 +66,12 @@ object GeminiTranslator : Translator {
         )
         val payload = Payload(
             contents = listOf(Content(parts = listOf(Part(prompt)))),
-            generationConfig = GenerationConfig(temperature = 0.2f, maxOutputTokens = 1024),
+            // A chunk-by-chunk breakdown runs far longer than a translation;
+            // too small a cap silently truncates it into a MAX_TOKENS failure.
+            generationConfig = GenerationConfig(temperature = 0.2f, maxOutputTokens = 2048),
+            systemInstruction = config.systemPrompt
+                .takeIf { it.isNotBlank() }
+                ?.let { SystemInstruction(parts = listOf(Part(renderSystemPrompt(it, config)))) },
         )
 
         return Request.Builder()

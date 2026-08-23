@@ -46,6 +46,12 @@ data class TranslationConfig(
     /** Prompt template for LLM providers. Blank falls back to [DEFAULT_PROMPT]. */
     val prompt: String = "",
     /**
+     * Verbatim system-role instructions for LLM providers. Blank lets the
+     * translator pick its own. Placeholders are expanded like [prompt], minus
+     * `{text}` — the sentence belongs in the user message.
+     */
+    val systemPrompt: String = "",
+    /**
      * Base URL override for the OpenAI-compatible provider, so a local server
      * (llama.cpp, LM Studio, Ollama, vLLM …) can be used instead of api.openai.com.
      * Blank means the official endpoint.
@@ -69,11 +75,46 @@ data class TranslationConfig(
                 "Reply with the translation only — no explanations, no notes, no romanization, " +
                 "no quotes around it.\n\n{text}"
 
-        /** Starting point for the second button, which is where an LLM earns its keep. */
-        const val DEFAULT_GRAMMAR_PROMPT =
-            "Explain, in {target}, the grammar of this {source} sentence for a language learner.\n" +
-                "Break down the particles, verb forms and any set expressions. Keep it under six " +
-                "short lines and do not repeat the sentence back.\n\n{text}"
+        /** Both buttons send the bare sentence; the instructions live in the system prompt. */
+        const val DEFAULT_SENTENCE_ONLY_PROMPT = "{text}"
+
+        /**
+         * Default system prompt for the main button. Modelled on Migaku's
+         * sentence-translation prompt; its `[TARGET_LANG]` means the language to
+         * translate *into*, so it maps onto `{target}`.
+         */
+        const val DEFAULT_TRANSLATE_SYSTEM_PROMPT =
+            "You are a language translation API.\n" +
+                "RESPOND ONLY with the translated text.\n" +
+                "MAINTAIN the EXACT punctuation of the original text.\n" +
+                "DO NOT RESPOND with enclosing quotations unless the original text has them.\n" +
+                "Sentence MUST BE translated into this SPECIFIC language: {target}."
+
+        /**
+         * Default system prompt for the second button: a chunk-by-chunk
+         * breakdown of the sentence. Modelled on Migaku's sentence-breakdown
+         * prompt, with its `[INTERFACE_LANG]` / `[TARGET_LANG]` placeholders
+         * mapped onto `{target}` / `{source}`.
+         */
+        const val DEFAULT_BREAKDOWN_SYSTEM_PROMPT =
+            "You are a language API that does sentence breakdown-explanations.\n" +
+                "Break down the supplied sentence into meaningful, contiguous chunks.\n" +
+                "Each chunk should be SMALL, meaningful groupings of words or characters.\n" +
+                "Output in groups of NUMBERED LISTS, in this format:\n" +
+                "#1 chunk, #2 reworded meaning, #3 explanation (particles, tenses, etc.).\n" +
+                "'Chunk' MUST be in its original language.\n" +
+                "'Meaning' and 'explanation' MUST be in language {target}.\n" +
+                "'Meaning' MUST be markedly different from 'Chunk' text " +
+                "(reworded, definition, synonyms, etc.).\n" +
+                "The 'explanation' field should be no longer than 100 words.\n" +
+                "ALWAYS count like so: #1 ... #2 ... #3 ... DO NOT count higher.\n" +
+                "DO NOT OUTPUT dot-points, dashes, or titles like 'Chunk:' etc.\n" +
+                "DO NOT OUTPUT readings, brackets, or romaji/pinyin/furigana/pronunciations " +
+                "of any kind.\n" +
+                "DO NOT OUTPUT the original sentence.\n" +
+                "DO NOT OUTPUT quotation marks in the 'chunk' or 'meaning' fields.\n" +
+                "DO NOT OUTPUT other text, ONLY OUTPUT numbered lists.\n" +
+                "DO NOT OUTPUT any text in {source}. ONLY output text IN {target}."
     }
 }
 

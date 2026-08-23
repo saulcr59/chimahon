@@ -81,12 +81,24 @@ private fun rememberTranslationSlot(
     provider: String,
     targetLanguage: String,
     prompt: String,
+    systemPrompt: String,
     visible: Boolean,
     autoTranslate: Boolean,
 ): TranslationSlotState {
-    val state = remember(sentence, provider, targetLanguage, prompt) { TranslationSlotState() }
+    val state = remember(sentence, provider, targetLanguage, prompt, systemPrompt) {
+        TranslationSlotState()
+    }
 
-    LaunchedEffect(sentence, provider, targetLanguage, prompt, state.attempt, autoTranslate, visible) {
+    LaunchedEffect(
+        sentence,
+        provider,
+        targetLanguage,
+        prompt,
+        systemPrompt,
+        state.attempt,
+        autoTranslate,
+        visible,
+    ) {
         if (!visible) return@LaunchedEffect
         if (state.attempt == 0 && !autoTranslate) return@LaunchedEffect
         state.status = TranslationUiState.Loading
@@ -133,10 +145,12 @@ internal fun SentenceTranslationBar(
     val enabled by preferences.translationEnabled().collectAsState()
     val provider by preferences.translationProvider().collectAsState()
     val prompt by preferences.translationPrompt().collectAsState()
+    val systemPrompt by preferences.translationSystemPrompt().collectAsState()
     val targetLanguage by preferences.translationTargetLanguage().collectAsState()
     val autoTranslate by preferences.translationAutoTranslate().collectAsState()
     val secondaryProvider by preferences.translationSecondaryProvider().collectAsState()
     val secondaryPrompt by preferences.translationSecondaryPrompt().collectAsState()
+    val secondarySystemPrompt by preferences.translationSecondarySystemPrompt().collectAsState()
     val secondaryLabel by preferences.translationSecondaryLabel().collectAsState()
 
     if (!enabled || sentence.isBlank()) return
@@ -151,6 +165,7 @@ internal fun SentenceTranslationBar(
         provider = provider,
         targetLanguage = targetLanguage,
         prompt = prompt,
+        systemPrompt = systemPrompt,
         visible = visible,
         autoTranslate = autoTranslate,
     )
@@ -164,6 +179,7 @@ internal fun SentenceTranslationBar(
         provider = secondaryProvider,
         targetLanguage = targetLanguage,
         prompt = secondaryPrompt,
+        systemPrompt = secondarySystemPrompt,
         visible = visible,
         autoTranslate = false,
     )
@@ -216,7 +232,7 @@ internal fun SentenceTranslationBar(
                 if (secondaryProvider.isNotBlank()) {
                     SlotButton(
                         state = secondary,
-                        idleLabel = secondaryLabel.ifBlank { "Grammar" },
+                        idleLabel = secondaryLabel.ifBlank { "Breakdown" },
                         icon = Icons.Outlined.AutoAwesome,
                         eInkMode = eInkMode,
                         chromeText = chromeText,
@@ -315,9 +331,10 @@ private fun SlotResult(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        // Capped so two open results still leave room for the
-                        // dictionary entries below.
-                        .heightIn(max = 96.dp)
+                        // A chunk-by-chunk breakdown is far taller than a
+                        // translation, so this scrolls rather than pushing the
+                        // dictionary entries off the popup.
+                        .heightIn(max = 160.dp)
                         .verticalScroll(rememberScrollState()),
                 ) {
                     Text(

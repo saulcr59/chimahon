@@ -78,10 +78,10 @@ object OpenAiTranslator : Translator {
             messages = listOf(
                 Message(
                     role = "system",
-                    content = if (config.hasCustomPrompt) {
-                        FREEFORM_SYSTEM_PROMPT
-                    } else {
-                        TRANSLATE_ONLY_SYSTEM_PROMPT
+                    content = when {
+                        config.systemPrompt.isNotBlank() -> renderSystemPrompt(config.systemPrompt, config)
+                        config.hasCustomPrompt -> FREEFORM_SYSTEM_PROMPT
+                        else -> TRANSLATE_ONLY_SYSTEM_PROMPT
                     },
                 ),
                 Message(role = "user", content = prompt),

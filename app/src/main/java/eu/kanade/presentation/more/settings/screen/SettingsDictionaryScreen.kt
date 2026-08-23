@@ -543,6 +543,9 @@ object SettingsDictionaryScreen : SearchableSettings {
         fun maskedKey(key: String) =
             if (key.isBlank()) "Not set" else "•".repeat(8) + key.takeLast(4)
 
+        fun promptSummary(value: String) =
+            if (value.isBlank()) "Default" else value.lineSequence().first().take(60)
+
         val items = buildList<Preference.PreferenceItem<out Any, out Any>> {
             add(
                 Preference.PreferenceItem.SwitchPreference(
@@ -653,14 +656,20 @@ object SettingsDictionaryScreen : SearchableSettings {
             if (TranslationProviders.isLlm(provider)) {
                 add(
                     Preference.PreferenceItem.EditTextInfoPreference(
+                        preference = dictionaryPreferences.translationSystemPrompt(),
+                        dialogSubtitle = "System-role instructions. Placeholders: {source}, " +
+                            "{target}. Leave blank for the default translate-only instructions.",
+                        title = "System prompt",
+                        subtitle = promptSummary(dictionaryPreferences.translationSystemPrompt().get()),
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.EditTextInfoPreference(
                         preference = dictionaryPreferences.translationPrompt(),
-                        dialogSubtitle = "Placeholders: {text}, {source}, {target}. " +
-                            "Leave blank for the default translate-only prompt.",
-                        title = "Prompt",
-                        subtitle = dictionaryPreferences.translationPrompt().get()
-                            .ifBlank { "Default" }
-                            .lineSequence().first()
-                            .take(60),
+                        dialogSubtitle = "User message. Placeholders: {text}, {source}, {target}. " +
+                            "Leave blank to send just the sentence.",
+                        title = "User prompt",
+                        subtitle = promptSummary(dictionaryPreferences.translationPrompt().get()),
                     ),
                 )
             }
@@ -696,14 +705,25 @@ object SettingsDictionaryScreen : SearchableSettings {
                 if (TranslationProviders.isLlm(secondaryProvider)) {
                     add(
                         Preference.PreferenceItem.EditTextInfoPreference(
+                            preference = dictionaryPreferences.translationSecondarySystemPrompt(),
+                            dialogSubtitle = "System-role instructions. Placeholders: {source}, " +
+                                "{target}. Leave blank for the default sentence-breakdown " +
+                                "instructions.",
+                            title = "Second button system prompt",
+                            subtitle = promptSummary(
+                                dictionaryPreferences.translationSecondarySystemPrompt().get(),
+                            ),
+                        ),
+                    )
+                    add(
+                        Preference.PreferenceItem.EditTextInfoPreference(
                             preference = dictionaryPreferences.translationSecondaryPrompt(),
-                            dialogSubtitle = "Placeholders: {text}, {source}, {target}. " +
-                                "Leave blank for the default grammar-breakdown prompt.",
-                            title = "Second button prompt",
-                            subtitle = dictionaryPreferences.translationSecondaryPrompt().get()
-                                .ifBlank { "Default grammar breakdown" }
-                                .lineSequence().first()
-                                .take(60),
+                            dialogSubtitle = "User message. Placeholders: {text}, {source}, " +
+                                "{target}. Leave blank to send just the sentence.",
+                            title = "Second button user prompt",
+                            subtitle = promptSummary(
+                                dictionaryPreferences.translationSecondaryPrompt().get(),
+                            ),
                         ),
                     )
                 }

@@ -74,6 +74,21 @@ internal fun renderPrompt(template: String, text: String, config: TranslationCon
     }
 }
 
+/**
+ * Expands `{source}` / `{target}` in system-role instructions. Unlike
+ * [renderPrompt] it never appends the sentence: the sentence belongs in the
+ * user message, and a `{text}` placeholder here would smuggle it into a role
+ * that is supposed to hold instructions only.
+ */
+internal fun renderSystemPrompt(template: String, config: TranslationConfig): String {
+    val source = TranslationLanguages.sourceName(config.sourceLanguage) ?: "the source language"
+    return template
+        .replace("{source}", source)
+        .replace("{target}", TranslationLanguages.targetName(config.targetLanguage))
+        .replace("{text}", "")
+        .trim()
+}
+
 /** Strips the wrapping quotes/code fences LLMs sometimes add around a translation. */
 internal fun cleanLlmOutput(raw: String): String {
     var out = raw.trim()

@@ -256,15 +256,63 @@ class TranslatorTest {
     }
 
     @Test
-    fun `default grammar prompt asks for the breakdown in the target language`() {
-        val rendered = renderPrompt(
-            TranslationConfig.DEFAULT_GRAMMAR_PROMPT,
-            "今日はいい天気ですね",
+    fun `breakdown system prompt names both languages`() {
+        val rendered = renderSystemPrompt(
+            TranslationConfig.DEFAULT_BREAKDOWN_SYSTEM_PROMPT,
             TranslationConfig(targetLanguage = "ES", sourceLanguage = "ja"),
         )
-        Assertions.assertTrue(rendered.contains("Spanish"), rendered)
-        Assertions.assertTrue(rendered.contains("Japanese"), rendered)
-        Assertions.assertTrue(rendered.endsWith("今日はいい天気ですね"), rendered)
+        // Explanations in Spanish, and no Japanese in the output fields.
+        Assertions.assertTrue(rendered.contains("in language Spanish"), rendered)
+        Assertions.assertTrue(rendered.contains("DO NOT OUTPUT any text in Japanese"), rendered)
+    }
+
+    @Test
+    fun `translate system prompt targets the output language`() {
+        val rendered = renderSystemPrompt(
+            TranslationConfig.DEFAULT_TRANSLATE_SYSTEM_PROMPT,
+            TranslationConfig(targetLanguage = "ES", sourceLanguage = "ja"),
+        )
+        Assertions.assertTrue(rendered.endsWith("SPECIFIC language: Spanish."), rendered)
+    }
+
+    @Test
+    fun `system prompts never carry the sentence`() {
+        // {text} belongs in the user message; leaving it in the system role
+        // would send the sentence twice.
+        val rendered = renderSystemPrompt("Do the thing with {text}", TranslationConfig())
+        Assertions.assertFalse(rendered.contains("{text}"), rendered)
+        Assertions.assertEquals("Do the thing with", rendered)
+    }
+
+    @Test
+    fun `openai puts a configured system prompt in the system role`() {
+        val body = OpenAiTranslator.buildRequest(
+            "今日は",
+            TranslationConfig(
+                apiKey = "k",
+                targetLanguage = "ES",
+                systemPrompt = "Reply only in {target}.",
+                prompt = TranslationConfig.DEFAULT_SENTENCE_ONLY_PROMPT,
+            ),
+        ).bodyAsString()
+        Assertions.assertTrue(body.contains("Reply only in Spanish."), body)
+        Assertions.assertFalse(body.contains("Output only the translation"), body)
+    }
+
+    @Test
+    fun `gemini sends a configured system prompt as systemInstruction`() {
+        val withSystem = GeminiTranslator.buildRequest(
+            "今日は",
+            TranslationConfig(apiKey = "k", targetLanguage = "ES", systemPrompt = "Reply only in {target}."),
+        ).bodyAsString()
+        Assertions.assertTrue(withSystem.contains("systemInstruction"), withSystem)
+        Assertions.assertTrue(withSystem.contains("Reply only in Spanish."), withSystem)
+
+        // Blank system prompt must not add an empty instruction block.
+        val without = GeminiTranslator
+            .buildRequest("今日は", TranslationConfig(apiKey = "k"))
+            .bodyAsString()
+        Assertions.assertFalse(without.contains("systemInstruction"), without)
     }
 
     @Test
@@ -277,7 +325,11 @@ class TranslatorTest {
         val grammar = GeminiTranslator
             .buildRequest(
                 "今日は",
-                TranslationConfig(apiKey = "k", prompt = TranslationConfig.DEFAULT_GRAMMAR_PROMPT),
+                TranslationConfig(
+                    apiKey = "k",
+                    prompt = TranslationConfig.DEFAULT_SENTENCE_ONLY_PROMPT,
+                    systemPrompt = TranslationConfig.DEFAULT_BREAKDOWN_SYSTEM_PROMPT,
+                ),
             )
             .bodyAsString()
         Assertions.assertNotEquals(translate, grammar)

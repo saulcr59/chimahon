@@ -49,10 +49,18 @@ class TranslationService(
         }
         if (provider.isBlank()) throw TranslationException("No provider configured for this button")
 
+        // The instructions live in the system prompt, so the user message is
+        // just the sentence unless the user overrode it.
         val prompt = when (slot) {
             TranslationSlot.PRIMARY -> preferences.translationPrompt().get()
             TranslationSlot.SECONDARY -> preferences.translationSecondaryPrompt().get()
-                .ifBlank { TranslationConfig.DEFAULT_GRAMMAR_PROMPT }
+        }.ifBlank { TranslationConfig.DEFAULT_SENTENCE_ONLY_PROMPT }
+
+        val systemPrompt = when (slot) {
+            TranslationSlot.PRIMARY -> preferences.translationSystemPrompt().get()
+                .ifBlank { TranslationConfig.DEFAULT_TRANSLATE_SYSTEM_PROMPT }
+            TranslationSlot.SECONDARY -> preferences.translationSecondarySystemPrompt().get()
+                .ifBlank { TranslationConfig.DEFAULT_BREAKDOWN_SYSTEM_PROMPT }
         }
 
         return TranslationConfig(
@@ -70,6 +78,7 @@ class TranslationService(
                 else -> ""
             },
             prompt = prompt,
+            systemPrompt = systemPrompt,
             openAiBaseUrl = preferences.translationOpenAiBaseUrl().get(),
         )
     }
@@ -131,6 +140,7 @@ class TranslationService(
         append(config.model).append('|')
         append(config.targetLanguage).append('|')
         append(config.prompt.hashCode()).append('|')
+        append(config.systemPrompt.hashCode()).append('|')
         append(sentence)
     }
 
