@@ -20,6 +20,16 @@ object TranslationProviders {
 }
 
 /**
+ * Which of the popup's two translation buttons a request belongs to.
+ *
+ * The pair exists so a clean machine translation and a wordier LLM answer can
+ * sit side by side: DeepL on [PRIMARY] for the sentence, an LLM on [SECONDARY]
+ * with a custom prompt for a grammar breakdown. Both slots share the per-provider
+ * API keys; only the provider and the prompt differ.
+ */
+enum class TranslationSlot { PRIMARY, SECONDARY }
+
+/**
  * Everything a [Translator] needs for one request.
  *
  * [targetLanguage] is a DeepL-style code ("ES", "EN-US", …) for every provider;
@@ -45,11 +55,25 @@ data class TranslationConfig(
     val hasCredentials: Boolean
         get() = apiKey.isNotBlank() || (provider == TranslationProviders.OPENAI && openAiBaseUrl.isNotBlank())
 
+    /**
+     * A prompt the user wrote themselves asks for something other than a bare
+     * translation, so the LLM backends must not bolt a "translation only"
+     * system prompt on top of it.
+     */
+    val hasCustomPrompt: Boolean
+        get() = prompt.isNotBlank()
+
     companion object {
         const val DEFAULT_PROMPT =
             "Translate the following {source} sentence into {target}.\n" +
                 "Reply with the translation only — no explanations, no notes, no romanization, " +
                 "no quotes around it.\n\n{text}"
+
+        /** Starting point for the second button, which is where an LLM earns its keep. */
+        const val DEFAULT_GRAMMAR_PROMPT =
+            "Explain, in {target}, the grammar of this {source} sentence for a language learner.\n" +
+                "Break down the particles, verb forms and any set expressions. Keep it under six " +
+                "short lines and do not repeat the sentence back.\n\n{text}"
     }
 }
 

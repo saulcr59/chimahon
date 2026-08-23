@@ -231,6 +231,58 @@ class TranslatorTest {
         Assertions.assertEquals("Hoy hace buen tiempo", result.text)
     }
 
+    @Test
+    fun `openai drops the translate-only system prompt when the user wrote their own`() {
+        val translateOnly = OpenAiTranslator
+            .buildRequest("text", TranslationConfig(apiKey = "k"))
+            .bodyAsString()
+        Assertions.assertTrue(translateOnly.contains("Output only the translation"), translateOnly)
+
+        // A grammar prompt must not be fought by a system prompt forbidding commentary.
+        val custom = OpenAiTranslator
+            .buildRequest("text", TranslationConfig(apiKey = "k", prompt = "Explain the grammar of {text}"))
+            .bodyAsString()
+        Assertions.assertFalse(custom.contains("Output only the translation"), custom)
+        Assertions.assertTrue(custom.contains("Follow the user's instructions"), custom)
+    }
+
+    // ── Two-slot setup ───────────────────────────────────────────────────────
+
+    @Test
+    fun `a blank prompt is not a custom prompt`() {
+        Assertions.assertFalse(TranslationConfig().hasCustomPrompt)
+        Assertions.assertFalse(TranslationConfig(prompt = "   ").hasCustomPrompt)
+        Assertions.assertTrue(TranslationConfig(prompt = "Explain").hasCustomPrompt)
+    }
+
+    @Test
+    fun `default grammar prompt asks for the breakdown in the target language`() {
+        val rendered = renderPrompt(
+            TranslationConfig.DEFAULT_GRAMMAR_PROMPT,
+            "今日はいい天気ですね",
+            TranslationConfig(targetLanguage = "ES", sourceLanguage = "ja"),
+        )
+        Assertions.assertTrue(rendered.contains("Spanish"), rendered)
+        Assertions.assertTrue(rendered.contains("Japanese"), rendered)
+        Assertions.assertTrue(rendered.endsWith("今日はいい天気ですね"), rendered)
+    }
+
+    @Test
+    fun `the two slots can share a provider without colliding`() {
+        // Same provider and model, different prompts — the requests must differ,
+        // which is what keeps the service cache from serving one for the other.
+        val translate = GeminiTranslator
+            .buildRequest("今日は", TranslationConfig(apiKey = "k", prompt = ""))
+            .bodyAsString()
+        val grammar = GeminiTranslator
+            .buildRequest(
+                "今日は",
+                TranslationConfig(apiKey = "k", prompt = TranslationConfig.DEFAULT_GRAMMAR_PROMPT),
+            )
+            .bodyAsString()
+        Assertions.assertNotEquals(translate, grammar)
+    }
+
     // ── Shared helpers ───────────────────────────────────────────────────────
 
     @Test

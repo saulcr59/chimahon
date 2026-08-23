@@ -535,6 +535,7 @@ object SettingsDictionaryScreen : SearchableSettings {
         val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
         val enabled by dictionaryPreferences.translationEnabled().collectAsState()
         val provider by dictionaryPreferences.translationProvider().collectAsState()
+        val secondaryProvider by dictionaryPreferences.translationSecondaryProvider().collectAsState()
         val deepLKey by dictionaryPreferences.translationDeepLApiKey().collectAsState()
         val geminiKey by dictionaryPreferences.translationGeminiApiKey().collectAsState()
         val openAiKey by dictionaryPreferences.translationOpenAiApiKey().collectAsState()
@@ -578,7 +579,14 @@ object SettingsDictionaryScreen : SearchableSettings {
                 ),
             )
 
-            when (provider) {
+            // Credentials for every provider actually in use. Both buttons draw
+            // from the same keys, so a DeepL main button with an OpenAI second
+            // button must still be able to reach the OpenAI fields.
+            val providersInUse = listOf(provider, secondaryProvider)
+                .filter { it.isNotBlank() }
+                .distinct()
+
+            for (inUse in providersInUse) when (inUse) {
                 TranslationProviders.DEEPL -> {
                     add(
                         Preference.PreferenceItem.EditTextInfoPreference(
@@ -655,6 +663,50 @@ object SettingsDictionaryScreen : SearchableSettings {
                             .take(60),
                     ),
                 )
+            }
+
+            // ── Second button ────────────────────────────────────────────────
+            add(
+                Preference.PreferenceItem.ListPreference(
+                    preference = dictionaryPreferences.translationSecondaryProvider(),
+                    entries = (
+                        listOf("" to "Off") +
+                            TranslationProviders.ALL.map { it to TranslationProviders.displayName(it) }
+                        ).toMap().toPersistentMap(),
+                    title = "Second button",
+                    subtitleProvider = { value, entries ->
+                        if (value.isBlank()) {
+                            "Off — one button only"
+                        } else {
+                            "${entries[value]} — a second button beside Translate"
+                        }
+                    },
+                ),
+            )
+            if (secondaryProvider.isNotBlank()) {
+                add(
+                    Preference.PreferenceItem.EditTextInfoPreference(
+                        preference = dictionaryPreferences.translationSecondaryLabel(),
+                        dialogSubtitle = "Caption on the second button. Blank uses \"Grammar\".",
+                        title = "Second button label",
+                        subtitle = dictionaryPreferences.translationSecondaryLabel().get()
+                            .ifBlank { "Grammar" },
+                    ),
+                )
+                if (TranslationProviders.isLlm(secondaryProvider)) {
+                    add(
+                        Preference.PreferenceItem.EditTextInfoPreference(
+                            preference = dictionaryPreferences.translationSecondaryPrompt(),
+                            dialogSubtitle = "Placeholders: {text}, {source}, {target}. " +
+                                "Leave blank for the default grammar-breakdown prompt.",
+                            title = "Second button prompt",
+                            subtitle = dictionaryPreferences.translationSecondaryPrompt().get()
+                                .ifBlank { "Default grammar breakdown" }
+                                .lineSequence().first()
+                                .take(60),
+                        ),
+                    )
+                }
             }
         }.toPersistentList()
 

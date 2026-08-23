@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ColorScheme
@@ -23,6 +24,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -33,11 +35,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import chimahon.translate.TranslationException
 import chimahon.translate.TranslationProviders
 import chimahon.translate.TranslationService
+import chimahon.translate.TranslationSlot
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import kotlinx.coroutines.CancellationException
 import tachiyomi.presentation.core.util.collectAsState
@@ -51,13 +55,64 @@ private sealed interface TranslationUiState {
     data class Failed(val message: String) : TranslationUiState
 }
 
+/** Mutable state of one of the two buttons. */
+@Stable
+private class TranslationSlotState {
+    var status by mutableStateOf<TranslationUiState>(TranslationUiState.Idle)
+
+    /** Bumped by a tap; the effect keyed on it is what issues the request. */
+    var attempt by mutableIntStateOf(0)
+
+    val isLoading get() = status is TranslationUiState.Loading
+    val isOpen get() = status is TranslationUiState.Done
+}
+
 /**
- * "Translate sentence" row shown inside the dictionary popup, above the entry
- * WebView. Because every reader (manga, novel, subtitles, video OCR, screen
- * lookup) funnels through [OcrLookupPopup], adding it here covers all of them.
+ * Drives one button: resets when the sentence or its settings change, and runs
+ * the request from a [LaunchedEffect] so switching sentences cancels any call
+ * still in flight.
+ */
+@Composable
+private fun rememberTranslationSlot(
+    service: TranslationService,
+    slot: TranslationSlot,
+    sentence: String,
+    sourceLanguage: String,
+    provider: String,
+    targetLanguage: String,
+    prompt: String,
+    visible: Boolean,
+    autoTranslate: Boolean,
+): TranslationSlotState {
+    val state = remember(sentence, provider, targetLanguage, prompt) { TranslationSlotState() }
+
+    LaunchedEffect(sentence, provider, targetLanguage, prompt, state.attempt, autoTranslate, visible) {
+        if (!visible) return@LaunchedEffect
+        if (state.attempt == 0 && !autoTranslate) return@LaunchedEffect
+        state.status = TranslationUiState.Loading
+        state.status = try {
+            TranslationUiState.Done(service.translate(sentence, sourceLanguage, slot).text)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TranslationException) {
+            TranslationUiState.Failed(e.message ?: "Translation failed")
+        } catch (e: Exception) {
+            TranslationUiState.Failed(e.message ?: e.javaClass.simpleName)
+        }
+    }
+    return state
+}
+
+/**
+ * Translation row shown inside the dictionary popup, above the entry WebView.
+ * Because every reader (manga, novel EPUB, subtitles, video OCR, screen lookup)
+ * funnels through [OcrLookupPopup], adding it here covers all of them.
  *
- * Renders nothing when the feature is disabled in settings or when there is no
- * sentence to translate.
+ * Offers up to two buttons: the main one for a plain translation, and an
+ * optional second one — typically an LLM with a custom prompt — for a grammar
+ * breakdown of the same sentence. Both results can stay open at once.
+ *
+ * Renders nothing when the feature is disabled or there is no sentence.
  */
 @Composable
 internal fun SentenceTranslationBar(
@@ -77,36 +132,41 @@ internal fun SentenceTranslationBar(
     val preferences = remember { Injekt.get<DictionaryPreferences>() }
     val enabled by preferences.translationEnabled().collectAsState()
     val provider by preferences.translationProvider().collectAsState()
+    val prompt by preferences.translationPrompt().collectAsState()
     val targetLanguage by preferences.translationTargetLanguage().collectAsState()
     val autoTranslate by preferences.translationAutoTranslate().collectAsState()
+    val secondaryProvider by preferences.translationSecondaryProvider().collectAsState()
+    val secondaryPrompt by preferences.translationSecondaryPrompt().collectAsState()
+    val secondaryLabel by preferences.translationSecondaryLabel().collectAsState()
 
     if (!enabled || sentence.isBlank()) return
 
     val service = remember { Injekt.get<TranslationService>() }
 
-    // A new sentence — or a settings change that invalidates the old answer —
-    // resets the row back to its collapsed state.
-    var state by remember(sentence, provider, targetLanguage) {
-        mutableStateOf<TranslationUiState>(TranslationUiState.Idle)
-    }
-    // Bumped by the button; the effect below is what actually runs the request,
-    // so switching sentences cancels any in-flight call for free.
-    var attempt by remember(sentence, provider, targetLanguage) { mutableIntStateOf(0) }
-
-    LaunchedEffect(sentence, provider, targetLanguage, attempt, autoTranslate, visible) {
-        if (!visible) return@LaunchedEffect
-        if (attempt == 0 && !autoTranslate) return@LaunchedEffect
-        state = TranslationUiState.Loading
-        state = try {
-            TranslationUiState.Done(service.translate(sentence, sourceLanguage).text)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: TranslationException) {
-            TranslationUiState.Failed(e.message ?: "Translation failed")
-        } catch (e: Exception) {
-            TranslationUiState.Failed(e.message ?: e.javaClass.simpleName)
-        }
-    }
+    val primary = rememberTranslationSlot(
+        service = service,
+        slot = TranslationSlot.PRIMARY,
+        sentence = sentence,
+        sourceLanguage = sourceLanguage,
+        provider = provider,
+        targetLanguage = targetLanguage,
+        prompt = prompt,
+        visible = visible,
+        autoTranslate = autoTranslate,
+    )
+    // Auto-translate deliberately covers only the main button: firing an LLM
+    // grammar breakdown on every popup would burn tokens unasked.
+    val secondary = rememberTranslationSlot(
+        service = service,
+        slot = TranslationSlot.SECONDARY,
+        sentence = sentence,
+        sourceLanguage = sourceLanguage,
+        provider = secondaryProvider,
+        targetLanguage = targetLanguage,
+        prompt = secondaryPrompt,
+        visible = visible,
+        autoTranslate = false,
+    )
 
     val chromeText = if (eInkMode) {
         if (isDark) Color.White else Color.Black
@@ -120,7 +180,6 @@ internal fun SentenceTranslationBar(
     }
     val chromeBorder = if (eInkMode) chromeText else colorScheme.outlineVariant
     val accent = if (eInkMode) chromeText else colorScheme.primary
-    val buttonShape = RoundedCornerShape(if (eInkMode) 0.dp else 20.dp)
 
     Surface(
         modifier = modifier
@@ -144,86 +203,139 @@ internal fun SentenceTranslationBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                val currentState = state
-                Surface(
-                    modifier = Modifier.clickable(enabled = currentState !is TranslationUiState.Loading) {
-                        when (currentState) {
-                            // Tapping the result collapses it again; anything else translates.
-                            is TranslationUiState.Done -> state = TranslationUiState.Idle
-                            else -> attempt++
-                        }
-                    },
-                    shape = buttonShape,
-                    color = if (currentState is TranslationUiState.Done) accent else Color.Transparent,
-                    contentColor = if (currentState is TranslationUiState.Done) chromeBackground else chromeText,
-                    border = BorderStroke(1.dp, if (currentState is TranslationUiState.Done) accent else chromeBorder),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        if (currentState is TranslationUiState.Loading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(14.dp),
-                                strokeWidth = 2.dp,
-                                color = chromeText,
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Outlined.Translate,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                        Text(
-                            text = when (currentState) {
-                                is TranslationUiState.Loading -> "Translating…"
-                                is TranslationUiState.Done -> "Hide"
-                                else -> "Translate"
-                            },
-                            maxLines = 1,
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    }
+                SlotButton(
+                    state = primary,
+                    idleLabel = "Translate",
+                    icon = Icons.Outlined.Translate,
+                    eInkMode = eInkMode,
+                    chromeText = chromeText,
+                    chromeBackground = chromeBackground,
+                    chromeBorder = chromeBorder,
+                    accent = accent,
+                )
+                if (secondaryProvider.isNotBlank()) {
+                    SlotButton(
+                        state = secondary,
+                        idleLabel = secondaryLabel.ifBlank { "Grammar" },
+                        icon = Icons.Outlined.AutoAwesome,
+                        eInkMode = eInkMode,
+                        chromeText = chromeText,
+                        chromeBackground = chromeBackground,
+                        chromeBorder = chromeBorder,
+                        accent = accent,
+                    )
                 }
-
                 Text(
-                    text = TranslationProviders.displayName(provider) + " → " + targetLanguage,
+                    text = targetLanguage,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.labelSmall,
                     color = chromeText.copy(alpha = 0.6f),
-                    modifier = Modifier.weight(1f),
                 )
             }
 
-            when (val currentState = state) {
-                is TranslationUiState.Done -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 120.dp)
-                            .verticalScroll(rememberScrollState())
-                            .padding(top = 6.dp),
-                    ) {
-                        Text(
-                            text = currentState.text,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = chromeText,
-                        )
-                    }
-                }
-                is TranslationUiState.Failed -> {
-                    Text(
-                        text = currentState.message,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (eInkMode) chromeText else colorScheme.error,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                }
-                else -> Unit
+            SlotResult(
+                state = primary,
+                providerLabel = TranslationProviders.displayName(provider),
+                chromeText = chromeText,
+                errorColor = if (eInkMode) chromeText else colorScheme.error,
+            )
+            if (secondaryProvider.isNotBlank()) {
+                SlotResult(
+                    state = secondary,
+                    providerLabel = TranslationProviders.displayName(secondaryProvider),
+                    chromeText = chromeText,
+                    errorColor = if (eInkMode) chromeText else colorScheme.error,
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun SlotButton(
+    state: TranslationSlotState,
+    idleLabel: String,
+    icon: ImageVector,
+    eInkMode: Boolean,
+    chromeText: Color,
+    chromeBackground: Color,
+    chromeBorder: Color,
+    accent: Color,
+) {
+    val open = state.isOpen
+    Surface(
+        modifier = Modifier.clickable(enabled = !state.isLoading) {
+            // Tapping an open result collapses it; anything else runs the request.
+            if (open) state.status = TranslationUiState.Idle else state.attempt++
+        },
+        shape = RoundedCornerShape(if (eInkMode) 0.dp else 20.dp),
+        color = if (open) accent else Color.Transparent,
+        contentColor = if (open) chromeBackground else chromeText,
+        border = BorderStroke(1.dp, if (open) accent else chromeBorder),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (state.isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 2.dp,
+                    color = chromeText,
+                )
+            } else {
+                Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp))
+            }
+            Text(
+                text = if (open) "Hide" else idleLabel,
+                maxLines = 1,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlotResult(
+    state: TranslationSlotState,
+    providerLabel: String,
+    chromeText: Color,
+    errorColor: Color,
+) {
+    when (val status = state.status) {
+        is TranslationUiState.Done -> {
+            Column(modifier = Modifier.padding(top = 6.dp)) {
+                Text(
+                    text = providerLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = chromeText.copy(alpha = 0.6f),
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // Capped so two open results still leave room for the
+                        // dictionary entries below.
+                        .heightIn(max = 96.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    Text(
+                        text = status.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = chromeText,
+                    )
+                }
+            }
+        }
+        is TranslationUiState.Failed -> {
+            Text(
+                text = status.message,
+                style = MaterialTheme.typography.labelSmall,
+                color = errorColor,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+        else -> Unit
     }
 }

@@ -20,9 +20,18 @@ object OpenAiTranslator : Translator {
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
-    private const val SYSTEM_PROMPT =
+    private const val TRANSLATE_ONLY_SYSTEM_PROMPT =
         "You are a translation engine embedded in a reading app. " +
             "Output only the translation of the user's sentence. Never add commentary."
+
+    /**
+     * A user-written prompt usually asks for something the translate-only rule
+     * would forbid — a grammar breakdown, say — so it gets a neutral system
+     * prompt instead of one that contradicts it.
+     */
+    private const val FREEFORM_SYSTEM_PROMPT =
+        "You are a language-learning assistant embedded in a reading app. " +
+            "Follow the user's instructions exactly and keep the answer compact."
 
     @Serializable
     private data class Payload(
@@ -67,7 +76,14 @@ object OpenAiTranslator : Translator {
         val payload = Payload(
             model = model,
             messages = listOf(
-                Message(role = "system", content = SYSTEM_PROMPT),
+                Message(
+                    role = "system",
+                    content = if (config.hasCustomPrompt) {
+                        FREEFORM_SYSTEM_PROMPT
+                    } else {
+                        TRANSLATE_ONLY_SYSTEM_PROMPT
+                    },
+                ),
                 Message(role = "user", content = prompt),
             ),
             temperature = 0.2f,

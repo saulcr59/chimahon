@@ -32,9 +32,29 @@ class TranslationService(
     }
     private val cacheMutex = Mutex()
 
-    /** Reads the current settings into a config, tagged with the profile's source language. */
-    fun currentConfig(sourceLanguage: String = ""): TranslationConfig {
-        val provider = preferences.translationProvider().get().ifBlank { TranslationProviders.DEEPL }
+    /**
+     * Reads the settings for one button into a config, tagged with the profile's
+     * source language. API keys, models and the target language are shared by
+     * both slots; the provider and the prompt are per-slot.
+     */
+    fun currentConfig(
+        sourceLanguage: String = "",
+        slot: TranslationSlot = TranslationSlot.PRIMARY,
+    ): TranslationConfig {
+        val provider = when (slot) {
+            TranslationSlot.PRIMARY ->
+                preferences.translationProvider().get().ifBlank { TranslationProviders.DEEPL }
+            TranslationSlot.SECONDARY ->
+                preferences.translationSecondaryProvider().get()
+        }
+        if (provider.isBlank()) throw TranslationException("No provider configured for this button")
+
+        val prompt = when (slot) {
+            TranslationSlot.PRIMARY -> preferences.translationPrompt().get()
+            TranslationSlot.SECONDARY -> preferences.translationSecondaryPrompt().get()
+                .ifBlank { TranslationConfig.DEFAULT_GRAMMAR_PROMPT }
+        }
+
         return TranslationConfig(
             provider = provider,
             apiKey = when (provider) {
@@ -49,7 +69,7 @@ class TranslationService(
                 TranslationProviders.OPENAI -> preferences.translationOpenAiModel().get()
                 else -> ""
             },
-            prompt = preferences.translationPrompt().get(),
+            prompt = prompt,
             openAiBaseUrl = preferences.translationOpenAiBaseUrl().get(),
         )
     }
@@ -58,11 +78,15 @@ class TranslationService(
      * Translates [text], returning a cached result when one exists.
      * Throws [TranslationException] with a user-facing message on any failure.
      */
-    suspend fun translate(text: String, sourceLanguage: String = ""): TranslationResult {
+    suspend fun translate(
+        text: String,
+        sourceLanguage: String = "",
+        slot: TranslationSlot = TranslationSlot.PRIMARY,
+    ): TranslationResult {
         val sentence = text.trim()
         if (sentence.isEmpty()) throw TranslationException("Nothing to translate")
 
-        val config = currentConfig(sourceLanguage)
+        val config = currentConfig(sourceLanguage, slot)
         if (!config.hasCredentials) {
             throw TranslationException(
                 "${TranslationProviders.displayName(config.provider)}: no API key configured " +

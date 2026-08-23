@@ -367,4 +367,13 @@ class DictionaryPreferences(
         preferenceStore.getString("pref_translation_openai_base_url", "")
 
     override fun translationPrompt() = preferenceStore.getString("pref_translation_prompt", "")
+
+    override fun translationSecondaryProvider() =
+        preferenceStore.getString("pref_translation_secondary_provider", "")
+
+    override fun translationSecondaryPrompt() =
+        preferenceStore.getString("pref_translation_secondary_prompt", "")
+
+    override fun translationSecondaryLabel() =
+        preferenceStore.getString("pref_translation_secondary_label", "")
 }

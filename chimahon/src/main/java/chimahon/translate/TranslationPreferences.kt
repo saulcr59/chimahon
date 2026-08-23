@@ -14,7 +14,7 @@ interface TranslationPreferences {
     /** Translate as soon as the popup opens, instead of waiting for a tap. */
     fun translationAutoTranslate(): Preference<Boolean>
 
-    /** One of [TranslationProviders]. */
+    /** One of [TranslationProviders]. Backs the popup's main button. */
     fun translationProvider(): Preference<String>
 
     /** DeepL-style target language code, e.g. "ES". */
@@ -32,4 +32,18 @@ interface TranslationPreferences {
 
     /** Prompt template for the LLM providers. Blank = [TranslationConfig.DEFAULT_PROMPT]. */
     fun translationPrompt(): Preference<String>
+
+    // -------------------------------------------------------------------------
+    // Second button — off by default, so the popup keeps a single button until
+    // the user asks for two. Shares the API keys and target language above.
+    // -------------------------------------------------------------------------
+
+    /** One of [TranslationProviders], or blank to hide the second button. */
+    fun translationSecondaryProvider(): Preference<String>
+
+    /** Prompt for the second button. Blank = [TranslationConfig.DEFAULT_GRAMMAR_PROMPT]. */
+    fun translationSecondaryPrompt(): Preference<String>
+
+    /** Caption on the second button. Blank = "Grammar". */
+    fun translationSecondaryLabel(): Preference<String>
 }
