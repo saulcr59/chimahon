@@ -37,7 +37,8 @@ object OpenAiTranslator : Translator {
     private data class Payload(
         val model: String,
         val messages: List<Message>,
-        val temperature: Float,
+        /** Omitted when null, letting the model use its own default. */
+        val temperature: Float? = null,
     )
 
     @Serializable
@@ -86,7 +87,7 @@ object OpenAiTranslator : Translator {
                 ),
                 Message(role = "user", content = prompt),
             ),
-            temperature = 0.2f,
+            temperature = if (config.sendTemperature) 0.2f else null,
         )
 
         val builder = Request.Builder()

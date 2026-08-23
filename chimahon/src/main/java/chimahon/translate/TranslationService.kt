@@ -115,9 +115,28 @@ class TranslationService(
 
     private suspend fun request(sentence: String, config: TranslationConfig): TranslationResult {
         val translator = Translator.forProvider(config.provider)
+
+        var effective = config
+        var response = send(translator, sentence, effective)
+
+        if (shouldRetryWithoutTemperature(response.first, response.second, effective)) {
+            effective = config.copy(sendTemperature = false)
+            response = send(translator, sentence, effective)
+        }
+
+        val (code, body) = response
+        if (code !in 200..299) throw TranslationException(translator.describeHttpError(code, body))
+        return translator.parseResponse(body, effective)
+    }
+
+    private suspend fun send(
+        translator: Translator,
+        sentence: String,
+        config: TranslationConfig,
+    ): Pair<Int, String> {
         val request = translator.buildRequest(sentence, config)
 
-        val (code, body) = withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             try {
                 client.newCall(request).await()
             } catch (e: TranslationException) {
@@ -130,9 +149,6 @@ class TranslationService(
                 )
             }
         }
-
-        if (code !in 200..299) throw TranslationException(translator.describeHttpError(code, body))
-        return translator.parseResponse(body, config)
     }
 
     private fun cacheKey(sentence: String, config: TranslationConfig) = buildString {
@@ -155,6 +171,20 @@ class TranslationService(
             .build()
     }
 }
+
+/**
+ * Reasoning-tier models reject a pinned temperature outright rather than
+ * ignoring it — "Only the default (1) value is supported" with HTTP 400 — so
+ * the request is worth sending again without it. Kept separate from the
+ * plumbing so the decision itself can be tested.
+ */
+internal fun shouldRetryWithoutTemperature(
+    code: Int,
+    body: String,
+    config: TranslationConfig,
+): Boolean = code == 400 &&
+    config.sendTemperature &&
+    body.contains("temperature", ignoreCase = true)
 
 /** Suspending [Call.execute] that cancels the HTTP call when the coroutine is cancelled. */
 private suspend fun Call.await(): Pair<Int, String> = suspendCancellableCoroutine { cont ->

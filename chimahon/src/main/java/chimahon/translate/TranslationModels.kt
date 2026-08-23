@@ -57,6 +57,12 @@ data class TranslationConfig(
      * Blank means the official endpoint.
      */
     val openAiBaseUrl: String = "",
+    /**
+     * Whether to pin `temperature`. Reasoning-tier models reject anything but
+     * their default and answer 400, so [TranslationService] clears this and
+     * retries once rather than making the user know which models those are.
+     */
+    val sendTemperature: Boolean = true,
 ) {
     val hasCredentials: Boolean
         get() = apiKey.isNotBlank() || (provider == TranslationProviders.OPENAI && openAiBaseUrl.isNotBlank())
@@ -92,29 +98,46 @@ data class TranslationConfig(
 
         /**
          * Default system prompt for the second button: a chunk-by-chunk
-         * breakdown of the sentence. Modelled on Migaku's sentence-breakdown
-         * prompt, with its `[INTERFACE_LANG]` / `[TARGET_LANG]` placeholders
-         * mapped onto `{target}` / `{source}`.
+         * breakdown built for study rather than for a cramped tooltip.
+         *
+         * Descends from Migaku's sentence-breakdown prompt but drops its
+         * "output no text in the studied language" rule, which contradicted its
+         * own "chunk must be in its original language" rule. Measured against
+         * gpt-5.6-*, that contradiction was not harmless: one model resolved it
+         * by dropping the Japanese chunks entirely and another stopped naming
+         * dictionary forms. Japanese is now explicitly allowed exactly where a
+         * learner needs it — the chunk itself and dictionary forms.
          */
         const val DEFAULT_BREAKDOWN_SYSTEM_PROMPT =
-            "You are a language API that does sentence breakdown-explanations.\n" +
-                "Break down the supplied sentence into meaningful, contiguous chunks.\n" +
-                "Each chunk should be SMALL, meaningful groupings of words or characters.\n" +
-                "Output in groups of NUMBERED LISTS, in this format:\n" +
-                "#1 chunk, #2 reworded meaning, #3 explanation (particles, tenses, etc.).\n" +
-                "'Chunk' MUST be in its original language.\n" +
-                "'Meaning' and 'explanation' MUST be in language {target}.\n" +
-                "'Meaning' MUST be markedly different from 'Chunk' text " +
-                "(reworded, definition, synonyms, etc.).\n" +
-                "The 'explanation' field should be no longer than 100 words.\n" +
-                "ALWAYS count like so: #1 ... #2 ... #3 ... DO NOT count higher.\n" +
-                "DO NOT OUTPUT dot-points, dashes, or titles like 'Chunk:' etc.\n" +
-                "DO NOT OUTPUT readings, brackets, or romaji/pinyin/furigana/pronunciations " +
-                "of any kind.\n" +
-                "DO NOT OUTPUT the original sentence.\n" +
-                "DO NOT OUTPUT quotation marks in the 'chunk' or 'meaning' fields.\n" +
-                "DO NOT OUTPUT other text, ONLY OUTPUT numbered lists.\n" +
-                "DO NOT OUTPUT any text in {source}. ONLY output text IN {target}."
+            "You are a grammar-explanation API inside a reading app for language learners.\n" +
+                "The user sends one {source} sentence. Explain it for a learner who reads {target}.\n" +
+                "\n" +
+                "Output EXACTLY these sections, in this order, and nothing else:\n" +
+                "\n" +
+                "TRANSLATION\n" +
+                "One natural {target} rendering of the whole sentence.\n" +
+                "\n" +
+                "BREAKDOWN\n" +
+                "One group per meaningful chunk, in reading order, together covering the whole " +
+                "sentence.\n" +
+                "Each group is exactly three lines:\n" +
+                "#1 the chunk, in {source}, exactly as it appears in the sentence\n" +
+                "#2 its meaning in {target}, reworded rather than a word-for-word gloss\n" +
+                "#3 the grammar in {target}: the role of each particle, the dictionary form of " +
+                "any verb or adjective, and every transformation applied to reach the surface form\n" +
+                "ALWAYS restart the count at #1 for each group. NEVER count past #3.\n" +
+                "\n" +
+                "NOTE\n" +
+                "One or two sentences in {target} on what a learner is most likely to get wrong " +
+                "here: register, nuance, an idiom, or a structure with no clean {target} " +
+                "equivalent. Omit this section entirely if there is nothing worth flagging.\n" +
+                "\n" +
+                "Rules:\n" +
+                "{source} appears ONLY in the #1 field and when naming a dictionary form inside #3.\n" +
+                "DO NOT output romaji, furigana, readings, or pronunciations of any kind.\n" +
+                "DO NOT output bullet points, dashes, or headings other than the three above.\n" +
+                "DO NOT repeat the original sentence outside the #1 fields.\n" +
+                "DO NOT output quotation marks in the #1 or #2 fields."
     }
 }
 

@@ -261,9 +261,26 @@ class TranslatorTest {
             TranslationConfig.DEFAULT_BREAKDOWN_SYSTEM_PROMPT,
             TranslationConfig(targetLanguage = "ES", sourceLanguage = "ja"),
         )
-        // Explanations in Spanish, and no Japanese in the output fields.
-        Assertions.assertTrue(rendered.contains("in language Spanish"), rendered)
-        Assertions.assertTrue(rendered.contains("DO NOT OUTPUT any text in Japanese"), rendered)
+        Assertions.assertTrue(rendered.contains("one Japanese sentence"), rendered)
+        Assertions.assertTrue(rendered.contains("a learner who reads Spanish"), rendered)
+        // The chunk must stay in Japanese — the rule Migaku's version contradicted.
+        Assertions.assertTrue(rendered.contains("#1 the chunk, in Japanese"), rendered)
+        Assertions.assertFalse(rendered.contains("{source}"), rendered)
+        Assertions.assertFalse(rendered.contains("{target}"), rendered)
+    }
+
+    @Test
+    fun `openai omits temperature when the config clears it`() {
+        val pinned = OpenAiTranslator
+            .buildRequest("text", TranslationConfig(apiKey = "k"))
+            .bodyAsString()
+        Assertions.assertTrue(pinned.contains("temperature"), pinned)
+
+        // Reasoning-tier models 400 on any pinned temperature.
+        val relaxed = OpenAiTranslator
+            .buildRequest("text", TranslationConfig(apiKey = "k", sendTemperature = false))
+            .bodyAsString()
+        Assertions.assertFalse(relaxed.contains("temperature"), relaxed)
     }
 
     @Test
@@ -353,6 +370,27 @@ class TranslatorTest {
     fun `prompt without a text placeholder still gets the sentence`() {
         val rendered = renderPrompt("Translate to {target}:", "今日は", TranslationConfig())
         Assertions.assertTrue(rendered.endsWith("今日は"), rendered)
+    }
+
+    @Test
+    fun `a temperature rejection triggers exactly one retry`() {
+        // The real body from gpt-5.6-luna.
+        val rejection = """
+            {"error":{"message":"Unsupported value: 'temperature' does not support 0.2 with
+            this model. Only the default (1) value is supported.","type":"invalid_request_error",
+            "param":"temperature","code":"unsupported_value"}}
+        """.trimIndent()
+        val pinned = TranslationConfig(apiKey = "k")
+
+        Assertions.assertTrue(shouldRetryWithoutTemperature(400, rejection, pinned))
+        // Already retried once — never loop.
+        Assertions.assertFalse(
+            shouldRetryWithoutTemperature(400, rejection, pinned.copy(sendTemperature = false)),
+        )
+        // Unrelated 400s and non-400s are surfaced, not retried.
+        Assertions.assertFalse(shouldRetryWithoutTemperature(400, """{"error":"bad model"}""", pinned))
+        Assertions.assertFalse(shouldRetryWithoutTemperature(401, rejection, pinned))
+        Assertions.assertFalse(shouldRetryWithoutTemperature(200, rejection, pinned))
     }
 
     @Test
