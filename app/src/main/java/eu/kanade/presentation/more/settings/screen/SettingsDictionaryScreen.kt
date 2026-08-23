@@ -88,6 +88,10 @@ import chimahon.anki.LapisPreset
 import chimahon.anki.Marker
 import chimahon.dictionary.readDictionaryIndex
 import chimahon.ocr.CropPresets
+import chimahon.translate.GeminiTranslator
+import chimahon.translate.OpenAiTranslator
+import chimahon.translate.TranslationLanguages
+import chimahon.translate.TranslationProviders
 import com.canopus.chimareader.data.FontManager
 import com.hippo.unifile.UniFile
 import eu.kanade.presentation.more.settings.Preference
@@ -511,12 +515,152 @@ object SettingsDictionaryScreen : SearchableSettings {
             )
         }
 
-        // Dictionary tab: profiles + imported dicts + updates + word audio
+        // Dictionary tab: profiles + imported dicts + updates + word audio + translation
         return listOf(
             getAnkiProfileGroup(),
             getDictionaryListGroup(importLauncher),
             getDictionaryUpdatesGroup(),
             getWordAudioGroup(pickDb),
+            getTranslationGroup(),
+        )
+    }
+
+    /**
+     * Sentence translation: the provider behind the "Translate" button that
+     * [eu.kanade.tachiyomi.ui.reader.viewer.SentenceTranslationBar] adds to every
+     * dictionary popup. Only the selected provider's fields are shown.
+     */
+    @Composable
+    private fun getTranslationGroup(): Preference.PreferenceGroup {
+        val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
+        val enabled by dictionaryPreferences.translationEnabled().collectAsState()
+        val provider by dictionaryPreferences.translationProvider().collectAsState()
+        val deepLKey by dictionaryPreferences.translationDeepLApiKey().collectAsState()
+        val geminiKey by dictionaryPreferences.translationGeminiApiKey().collectAsState()
+        val openAiKey by dictionaryPreferences.translationOpenAiApiKey().collectAsState()
+
+        fun maskedKey(key: String) =
+            if (key.isBlank()) "Not set" else "•".repeat(8) + key.takeLast(4)
+
+        val items = buildList<Preference.PreferenceItem<out Any, out Any>> {
+            add(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = dictionaryPreferences.translationEnabled(),
+                    title = "Sentence translation",
+                    subtitle = "Show a Translate button in the dictionary popup",
+                ),
+            )
+            if (!enabled) return@buildList
+
+            add(
+                Preference.PreferenceItem.ListPreference(
+                    preference = dictionaryPreferences.translationProvider(),
+                    entries = TranslationProviders.ALL
+                        .associateWith { TranslationProviders.displayName(it) }
+                        .toPersistentMap(),
+                    title = "Provider",
+                ),
+            )
+            add(
+                Preference.PreferenceItem.ListPreference(
+                    preference = dictionaryPreferences.translationTargetLanguage(),
+                    entries = TranslationLanguages.TARGETS
+                        .associate { it.first to "${it.second} (${it.first})" }
+                        .toPersistentMap(),
+                    title = "Translate into",
+                ),
+            )
+            add(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = dictionaryPreferences.translationAutoTranslate(),
+                    title = "Translate automatically",
+                    subtitle = "Translate as soon as the popup opens, without tapping the button",
+                ),
+            )
+
+            when (provider) {
+                TranslationProviders.DEEPL -> {
+                    add(
+                        Preference.PreferenceItem.EditTextInfoPreference(
+                            preference = dictionaryPreferences.translationDeepLApiKey(),
+                            dialogSubtitle = "DeepL API key. Free keys end in \":fx\" and are " +
+                                "routed to the free endpoint automatically.",
+                            title = "DeepL API key",
+                            subtitle = maskedKey(deepLKey),
+                        ),
+                    )
+                }
+                TranslationProviders.GEMINI -> {
+                    add(
+                        Preference.PreferenceItem.EditTextInfoPreference(
+                            preference = dictionaryPreferences.translationGeminiApiKey(),
+                            dialogSubtitle = "Google AI Studio API key.",
+                            title = "Gemini API key",
+                            subtitle = maskedKey(geminiKey),
+                        ),
+                    )
+                    add(
+                        Preference.PreferenceItem.EditTextInfoPreference(
+                            preference = dictionaryPreferences.translationGeminiModel(),
+                            dialogSubtitle = "Leave blank for ${GeminiTranslator.defaultModel}.",
+                            title = "Gemini model",
+                            subtitle = dictionaryPreferences.translationGeminiModel().get()
+                                .ifBlank { GeminiTranslator.defaultModel },
+                        ),
+                    )
+                }
+                TranslationProviders.OPENAI -> {
+                    add(
+                        Preference.PreferenceItem.EditTextInfoPreference(
+                            preference = dictionaryPreferences.translationOpenAiApiKey(),
+                            dialogSubtitle = "OpenAI API key. Can be left blank when using a " +
+                                "local server that needs no authentication.",
+                            title = "OpenAI API key",
+                            subtitle = maskedKey(openAiKey),
+                        ),
+                    )
+                    add(
+                        Preference.PreferenceItem.EditTextInfoPreference(
+                            preference = dictionaryPreferences.translationOpenAiModel(),
+                            dialogSubtitle = "Leave blank for ${OpenAiTranslator.defaultModel}.",
+                            title = "OpenAI model",
+                            subtitle = dictionaryPreferences.translationOpenAiModel().get()
+                                .ifBlank { OpenAiTranslator.defaultModel },
+                        ),
+                    )
+                    add(
+                        Preference.PreferenceItem.EditTextInfoPreference(
+                            preference = dictionaryPreferences.translationOpenAiBaseUrl(),
+                            dialogSubtitle = "Point this at any OpenAI-compatible server " +
+                                "(llama.cpp, LM Studio, Ollama, OpenRouter). " +
+                                "Blank uses ${OpenAiTranslator.DEFAULT_BASE_URL}.",
+                            title = "API base URL",
+                            subtitle = dictionaryPreferences.translationOpenAiBaseUrl().get()
+                                .ifBlank { OpenAiTranslator.DEFAULT_BASE_URL },
+                        ),
+                    )
+                }
+            }
+
+            if (TranslationProviders.isLlm(provider)) {
+                add(
+                    Preference.PreferenceItem.EditTextInfoPreference(
+                        preference = dictionaryPreferences.translationPrompt(),
+                        dialogSubtitle = "Placeholders: {text}, {source}, {target}. " +
+                            "Leave blank for the default translate-only prompt.",
+                        title = "Prompt",
+                        subtitle = dictionaryPreferences.translationPrompt().get()
+                            .ifBlank { "Default" }
+                            .lineSequence().first()
+                            .take(60),
+                    ),
+                )
+            }
+        }.toPersistentList()
+
+        return Preference.PreferenceGroup(
+            title = "Sentence translation",
+            preferenceItems = items,
         )
     }
 

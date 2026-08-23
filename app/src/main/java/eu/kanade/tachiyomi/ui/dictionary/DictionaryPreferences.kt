@@ -4,13 +4,15 @@ import chimahon.anki.AnkiProfile
 import chimahon.anki.AnkiProfileStore
 import chimahon.audio.WordAudioPreferences
 import chimahon.dictionary.ko.KoreanParserMode
+import chimahon.translate.TranslationPreferences
+import chimahon.translate.TranslationProviders
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.getEnum
 
 class DictionaryPreferences(
     private val preferenceStore: PreferenceStore,
-) : WordAudioPreferences {
+) : WordAudioPreferences, TranslationPreferences {
 
     fun popupWidth() = preferenceStore.getInt("pref_dictionary_popup_width", 300)
 
@@ -331,4 +333,31 @@ class DictionaryPreferences(
     override fun wordAudioLocalUri() = preferenceStore.getString("pref_word_audio_local_uri", "")
 
     override fun wordAudioLocalEnabled() = preferenceStore.getBoolean("pref_word_audio_local_enabled", false)
+
+    // -------------------------------------------------------------------------
+    // Sentence translation (implementing TranslationPreferences)
+    // -------------------------------------------------------------------------
+
+    override fun translationEnabled() = preferenceStore.getBoolean("pref_translation_enabled", false)
+
+    override fun translationAutoTranslate() =
+        preferenceStore.getBoolean("pref_translation_auto", false)
+
+    override fun translationProvider() =
+        preferenceStore.getString("pref_translation_provider", TranslationProviders.DEEPL)
+
+    override fun translationTargetLanguage() =
+        preferenceStore.getString("pref_translation_target_lang", "EN-US")
+
+    override fun translationDeepLApiKey() = preferenceStore.getString("pref_translation_deepl_key", "")
+    override fun translationGeminiApiKey() = preferenceStore.getString("pref_translation_gemini_key", "")
+    override fun translationOpenAiApiKey() = preferenceStore.getString("pref_translation_openai_key", "")
+
+    override fun translationGeminiModel() = preferenceStore.getString("pref_translation_gemini_model", "")
+    override fun translationOpenAiModel() = preferenceStore.getString("pref_translation_openai_model", "")
+
+    override fun translationOpenAiBaseUrl() =
+        preferenceStore.getString("pref_translation_openai_base_url", "")
+
+    override fun translationPrompt() = preferenceStore.getString("pref_translation_prompt", "")
 }

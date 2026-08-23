@@ -12,6 +12,8 @@ import chimahon.audio.WordAudioPreferences
 import chimahon.audio.WordAudioService
 import chimahon.ocr.LensClient
 import chimahon.ocr.OcrCacheManager
+import chimahon.translate.TranslationPreferences
+import chimahon.translate.TranslationService
 import com.canopus.chimareader.data.NovelCategoryStorage
 import com.canopus.chimareader.ui.reader.NovelReaderActivity
 import com.canopus.chimareader.ttusync.SyncSettingsRepository
@@ -288,6 +290,9 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { TtuSyncManager(app, get(), get()) }
         addSingletonFactory<WordAudioPreferences> { get<DictionaryPreferences>() }
         addSingletonFactory { WordAudioService(app) }
+
+        addSingletonFactory<TranslationPreferences> { get<DictionaryPreferences>() }
+        addSingletonFactory { TranslationService(get()) }
 
         addSingletonFactory { LensClient() }
         addSingletonFactory { LocalOcrBridge(app) }

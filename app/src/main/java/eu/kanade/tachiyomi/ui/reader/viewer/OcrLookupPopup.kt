@@ -1231,6 +1231,15 @@ fun OcrLookupPopup(
                 if (recursiveNavMode == "popup" && dismissOnOutsideTap) {
                     PopupCloseChrome()
                 }
+                SentenceTranslationBar(
+                    sentence = currentFrame?.sentence ?: fullText,
+                    sourceLanguage = activeProfile.languageCode,
+                    visible = visible,
+                    eInkMode = eInkMode,
+                    isDark = isDark,
+                    backgroundColor = BgColor,
+                    colorScheme = colorScheme,
+                )
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
