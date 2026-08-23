@@ -178,7 +178,7 @@ internal fun PreferenceItem(
                         if (accepted) item.preference.set(it)
                         accepted
                     },
-                    singleLine = true,
+                    singleLine = item.singleLine,
                     canBeBlank = true,
                     validate = item.validate,
                     errorMessage = item.errorMessage,

@@ -661,6 +661,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                             "{target}. Leave blank for the default translate-only instructions.",
                         title = "System prompt",
                         subtitle = promptSummary(dictionaryPreferences.translationSystemPrompt().get()),
+                        singleLine = false,
                     ),
                 )
                 add(
@@ -670,6 +671,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                             "Leave blank to send just the sentence.",
                         title = "User prompt",
                         subtitle = promptSummary(dictionaryPreferences.translationPrompt().get()),
+                        singleLine = false,
                     ),
                 )
             }
@@ -713,6 +715,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                             subtitle = promptSummary(
                                 dictionaryPreferences.translationSecondarySystemPrompt().get(),
                             ),
+                            singleLine = false,
                         ),
                     )
                     add(
@@ -724,6 +727,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                             subtitle = promptSummary(
                                 dictionaryPreferences.translationSecondaryPrompt().get(),
                             ),
+                            singleLine = false,
                         ),
                     )
                 }

@@ -157,6 +157,8 @@ sealed class Preference {
             val dialogSubtitle: String?,
             val validate: (String) -> Boolean = { true },
             val errorMessage: @Composable ((String) -> String)? = null,
+            /** Set false for values that are genuinely multi-line, such as prompts. */
+            val singleLine: Boolean = true,
             override val title: String,
             override val subtitle: String? = "%s",
             override val enabled: Boolean = true,
