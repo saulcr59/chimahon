@@ -349,9 +349,16 @@ class DictionaryPreferences(
     override fun translationTargetLanguage() =
         preferenceStore.getString("pref_translation_target_lang", "EN-US")
 
-    override fun translationDeepLApiKey() = preferenceStore.getString("pref_translation_deepl_key", "")
-    override fun translationGeminiApiKey() = preferenceStore.getString("pref_translation_gemini_key", "")
-    override fun translationOpenAiApiKey() = preferenceStore.getString("pref_translation_openai_key", "")
+    // Private keys: PreferenceBackupCreator strips these, so a shared backup
+    // never carries the user's API credentials.
+    override fun translationDeepLApiKey() =
+        preferenceStore.getString(Preference.privateKey("pref_translation_deepl_key"), "")
+
+    override fun translationGeminiApiKey() =
+        preferenceStore.getString(Preference.privateKey("pref_translation_gemini_key"), "")
+
+    override fun translationOpenAiApiKey() =
+        preferenceStore.getString(Preference.privateKey("pref_translation_openai_key"), "")
 
     override fun translationGeminiModel() = preferenceStore.getString("pref_translation_gemini_model", "")
     override fun translationOpenAiModel() = preferenceStore.getString("pref_translation_openai_model", "")
