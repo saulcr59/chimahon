@@ -1,6 +1,8 @@
 package chimahon.translate
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -39,6 +41,13 @@ object OpenAiTranslator : Translator {
         val messages: List<Message>,
         /** Omitted when null, letting the model use its own default. */
         val temperature: Float? = null,
+        @SerialName("response_format") val responseFormat: ResponseFormat? = null,
+    )
+
+    @Serializable
+    private data class ResponseFormat(
+        val type: String,
+        @SerialName("json_schema") val jsonSchema: JsonElement,
     )
 
     @Serializable
@@ -88,6 +97,14 @@ object OpenAiTranslator : Translator {
                 Message(role = "user", content = prompt),
             ),
             temperature = if (config.sendTemperature) 0.2f else null,
+            responseFormat = if (config.structured) {
+                ResponseFormat(
+                    type = "json_schema",
+                    jsonSchema = translationJson.parseToJsonElement(BREAKDOWN_SCHEMA),
+                )
+            } else {
+                null
+            },
         )
 
         val builder = Request.Builder()
@@ -106,7 +123,27 @@ object OpenAiTranslator : Translator {
         }
         val choice = parsed.choices.firstOrNull()
             ?: throw TranslationException("OpenAI: no choices returned")
-        val text = cleanLlmOutput(choice.message?.content.orEmpty())
+        val raw = choice.message?.content.orEmpty()
+
+        if (config.structured) {
+            // strict mode makes malformed JSON very unlikely, but a refusal or a
+            // truncated answer still lands here, and showing the raw text beats
+            // showing an error.
+            val breakdown = try {
+                translationJson.decodeFromString<SentenceBreakdown>(raw)
+            } catch (_: Exception) {
+                null
+            }
+            if (breakdown != null && breakdown.isUsable) {
+                return TranslationResult(
+                    text = breakdown.toPlainText(),
+                    provider = id,
+                    breakdown = breakdown,
+                )
+            }
+        }
+
+        val text = cleanLlmOutput(raw)
         if (text.isBlank()) throw TranslationException("OpenAI: empty translation")
         return TranslationResult(text = text, provider = id)
     }

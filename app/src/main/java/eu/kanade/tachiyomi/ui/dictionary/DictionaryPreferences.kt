@@ -380,6 +380,9 @@ class DictionaryPreferences(
     override fun translationSecondarySystemPrompt() =
         preferenceStore.getString("pref_translation_secondary_system_prompt", "")
 
+    override fun translationSecondaryStructured() =
+        preferenceStore.getBoolean("pref_translation_secondary_structured", true)
+
     override fun translationSecondaryLabel() =
         preferenceStore.getString("pref_translation_secondary_label", "")
 }

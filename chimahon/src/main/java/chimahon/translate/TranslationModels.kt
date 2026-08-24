@@ -63,6 +63,11 @@ data class TranslationConfig(
      * retries once rather than making the user know which models those are.
      */
     val sendTemperature: Boolean = true,
+    /**
+     * Ask the backend for JSON matching [BREAKDOWN_SCHEMA] instead of describing
+     * the layout in the prompt. OpenAI-only; other providers ignore it.
+     */
+    val structured: Boolean = false,
 ) {
     val hasCredentials: Boolean
         get() = apiKey.isNotBlank() || (provider == TranslationProviders.OPENAI && openAiBaseUrl.isNotBlank())
@@ -95,6 +100,18 @@ data class TranslationConfig(
                 "MAINTAIN the EXACT punctuation of the original text.\n" +
                 "DO NOT RESPOND with enclosing quotations unless the original text has them.\n" +
                 "Sentence MUST BE translated into this SPECIFIC language: {target}."
+
+        /**
+         * System prompt for structured mode. Much shorter than its prose
+         * counterpart because the schema already carries the layout — all that
+         * is left is the linguistic instruction.
+         */
+        const val DEFAULT_STRUCTURED_SYSTEM_PROMPT =
+            "You are a grammar-explanation API inside a reading app for language learners.\n" +
+                "The user sends one {source} sentence. Explain it for a learner who reads {target}.\n" +
+                "Write every explanation in {target}. {source} belongs only in the chunk field " +
+                "and when naming a dictionary form.\n" +
+                "Do not output romaji, furigana, readings or pronunciations of any kind."
 
         /**
          * Default system prompt for the second button: a chunk-by-chunk
@@ -147,6 +164,12 @@ data class TranslationResult(
     val provider: String,
     /** Source language reported by the backend, when it reports one. */
     val detectedSourceLanguage: String? = null,
+    /**
+     * Set only when the backend answered in [BREAKDOWN_SCHEMA] form, letting the
+     * popup lay the sections out itself. [text] always holds a readable
+     * flattening of the same content.
+     */
+    val breakdown: SentenceBreakdown? = null,
 )
 
 /** Any failure worth showing the user in the popup, with an already-readable message. */

@@ -56,11 +56,25 @@ class TranslationService(
             TranslationSlot.SECONDARY -> preferences.translationSecondaryPrompt().get()
         }.ifBlank { TranslationConfig.DEFAULT_SENTENCE_ONLY_PROMPT }
 
+        // Structured mode only makes sense on the second button, and only OpenAI
+        // implements it; anywhere else the flag would be a silent no-op.
+        val structured = slot == TranslationSlot.SECONDARY &&
+            provider == TranslationProviders.OPENAI &&
+            preferences.translationSecondaryStructured().get()
+
         val systemPrompt = when (slot) {
             TranslationSlot.PRIMARY -> preferences.translationSystemPrompt().get()
                 .ifBlank { TranslationConfig.DEFAULT_TRANSLATE_SYSTEM_PROMPT }
             TranslationSlot.SECONDARY -> preferences.translationSecondarySystemPrompt().get()
-                .ifBlank { TranslationConfig.DEFAULT_BREAKDOWN_SYSTEM_PROMPT }
+                .ifBlank {
+                    // The schema carries the layout, so structured mode needs
+                    // only the linguistic half of the instructions.
+                    if (structured) {
+                        TranslationConfig.DEFAULT_STRUCTURED_SYSTEM_PROMPT
+                    } else {
+                        TranslationConfig.DEFAULT_BREAKDOWN_SYSTEM_PROMPT
+                    }
+                }
         }
 
         return TranslationConfig(
@@ -79,6 +93,7 @@ class TranslationService(
             },
             prompt = prompt,
             systemPrompt = systemPrompt,
+            structured = structured,
             openAiBaseUrl = preferences.translationOpenAiBaseUrl().get(),
         )
     }
@@ -157,6 +172,7 @@ class TranslationService(
         append(config.targetLanguage).append('|')
         append(config.prompt.hashCode()).append('|')
         append(config.systemPrompt.hashCode()).append('|')
+        append(config.structured).append('|')
         append(sentence)
     }
 

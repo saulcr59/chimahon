@@ -704,6 +704,16 @@ object SettingsDictionaryScreen : SearchableSettings {
                             .ifBlank { "Grammar" },
                     ),
                 )
+                if (secondaryProvider == TranslationProviders.OPENAI) {
+                    add(
+                        Preference.PreferenceItem.SwitchPreference(
+                            preference = dictionaryPreferences.translationSecondaryStructured(),
+                            title = "Structured output",
+                            subtitle = "Ask for a JSON schema instead of describing the layout, " +
+                                "and lay the sections out here. More reliable and cheaper.",
+                        ),
+                    )
+                }
                 if (TranslationProviders.isLlm(secondaryProvider)) {
                     add(
                         Preference.PreferenceItem.EditTextInfoPreference(

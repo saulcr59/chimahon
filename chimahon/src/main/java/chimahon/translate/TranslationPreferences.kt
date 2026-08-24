@@ -53,6 +53,12 @@ interface TranslationPreferences {
      */
     fun translationSecondarySystemPrompt(): Preference<String>
 
+    /**
+     * Ask OpenAI for a schema-shaped answer instead of a prose layout, and lay
+     * the sections out in the popup. Ignored by the other providers.
+     */
+    fun translationSecondaryStructured(): Preference<Boolean>
+
     /** Caption on the second button. Blank = "Breakdown". */
     fun translationSecondaryLabel(): Preference<String>
 }

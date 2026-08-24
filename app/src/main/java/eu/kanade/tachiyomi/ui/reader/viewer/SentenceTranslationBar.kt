@@ -36,8 +36,14 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import chimahon.translate.SentenceBreakdown
 import chimahon.translate.TranslationException
 import chimahon.translate.TranslationProviders
 import chimahon.translate.TranslationService
@@ -51,7 +57,13 @@ import uy.kohesive.injekt.api.get
 private sealed interface TranslationUiState {
     data object Idle : TranslationUiState
     data object Loading : TranslationUiState
-    data class Done(val text: String) : TranslationUiState
+
+    /** [breakdown] is set only when the backend answered in schema form. */
+    data class Done(
+        val text: String,
+        val breakdown: SentenceBreakdown? = null,
+    ) : TranslationUiState
+
     data class Failed(val message: String) : TranslationUiState
 }
 
@@ -103,7 +115,8 @@ private fun rememberTranslationSlot(
         if (state.attempt == 0 && !autoTranslate) return@LaunchedEffect
         state.status = TranslationUiState.Loading
         state.status = try {
-            TranslationUiState.Done(service.translate(sentence, sourceLanguage, slot).text)
+            val result = service.translate(sentence, sourceLanguage, slot)
+            TranslationUiState.Done(result.text, result.breakdown)
         } catch (e: CancellationException) {
             throw e
         } catch (e: TranslationException) {
@@ -254,6 +267,7 @@ internal fun SentenceTranslationBar(
                 state = primary,
                 providerLabel = TranslationProviders.displayName(provider),
                 chromeText = chromeText,
+                accent = accent,
                 errorColor = if (eInkMode) chromeText else colorScheme.error,
             )
             if (secondaryProvider.isNotBlank()) {
@@ -261,6 +275,7 @@ internal fun SentenceTranslationBar(
                     state = secondary,
                     providerLabel = TranslationProviders.displayName(secondaryProvider),
                     chromeText = chromeText,
+                    accent = accent,
                     errorColor = if (eInkMode) chromeText else colorScheme.error,
                 )
             }
@@ -313,11 +328,67 @@ private fun SlotButton(
     }
 }
 
+/**
+ * Lays out a schema-shaped breakdown. Chunk and meaning share a line so the
+ * whole analysis takes two lines per chunk instead of three — the difference
+ * between scrolling and not, in a popup this size.
+ */
+@Composable
+private fun BreakdownSections(
+    breakdown: SentenceBreakdown,
+    chromeText: Color,
+    accent: Color,
+) {
+    Column {
+        if (breakdown.translation.isNotBlank()) {
+            Text(
+                text = breakdown.translation,
+                style = MaterialTheme.typography.bodyMedium,
+                color = chromeText,
+            )
+        }
+        breakdown.chunks.forEach { chunk ->
+            Column(modifier = Modifier.padding(top = 6.dp)) {
+                Text(
+                    text = buildAnnotatedString {
+                        withStyle(SpanStyle(color = accent, fontWeight = FontWeight.Medium)) {
+                            append(chunk.chunk)
+                        }
+                        if (chunk.meaning.isNotBlank()) {
+                            append("  ")
+                            append(chunk.meaning)
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = chromeText,
+                )
+                if (chunk.grammar.isNotBlank()) {
+                    Text(
+                        text = chunk.grammar,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = chromeText.copy(alpha = 0.75f),
+                    )
+                }
+            }
+        }
+        breakdown.note?.takeIf { it.isNotBlank() }?.let { note ->
+            Text(
+                text = note,
+                style = MaterialTheme.typography.labelSmall,
+                color = chromeText.copy(alpha = 0.75f),
+                fontStyle = FontStyle.Italic,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
+}
+
 @Composable
 private fun SlotResult(
     state: TranslationSlotState,
     providerLabel: String,
     chromeText: Color,
+    accent: Color,
     errorColor: Color,
 ) {
     when (val status = state.status) {
@@ -337,11 +408,20 @@ private fun SlotResult(
                         .heightIn(max = 160.dp)
                         .verticalScroll(rememberScrollState()),
                 ) {
-                    Text(
-                        text = status.text,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = chromeText,
-                    )
+                    val breakdown = status.breakdown
+                    if (breakdown != null) {
+                        BreakdownSections(
+                            breakdown = breakdown,
+                            chromeText = chromeText,
+                            accent = accent,
+                        )
+                    } else {
+                        Text(
+                            text = status.text,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = chromeText,
+                        )
+                    }
                 }
             }
         }

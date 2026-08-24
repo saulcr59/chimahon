@@ -1,7 +1,8 @@
 package chimahon.translate
 
-import okio.Buffer
+import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.Request
+import okio.Buffer
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -13,6 +14,9 @@ class TranslatorTest {
         body?.writeTo(buffer)
         return buffer.readUtf8()
     }
+
+    /** Quotes and escapes a value so it can be embedded as a JSON string. */
+    private fun String.toJsonString(): String = JsonPrimitive(this).toString()
 
     // ── DeepL ────────────────────────────────────────────────────────────────
 
@@ -370,6 +374,65 @@ class TranslatorTest {
     fun `prompt without a text placeholder still gets the sentence`() {
         val rendered = renderPrompt("Translate to {target}:", "今日は", TranslationConfig())
         Assertions.assertTrue(rendered.endsWith("今日は"), rendered)
+    }
+
+    // ── Structured outputs ───────────────────────────────────────────────────
+
+    @Test
+    fun `structured mode asks for the schema in strict form`() {
+        val body = OpenAiTranslator
+            .buildRequest("今日は", TranslationConfig(apiKey = "k", structured = true))
+            .bodyAsString()
+        Assertions.assertTrue(body.contains("\"response_format\""), body)
+        Assertions.assertTrue(body.contains("\"json_schema\""), body)
+        Assertions.assertTrue(body.contains("\"strict\":true"), body)
+        Assertions.assertTrue(body.contains("sentence_breakdown"), body)
+
+        val plain = OpenAiTranslator
+            .buildRequest("今日は", TranslationConfig(apiKey = "k"))
+            .bodyAsString()
+        Assertions.assertFalse(plain.contains("response_format"), plain)
+    }
+
+    @Test
+    fun `a schema answer becomes a breakdown and a readable flattening`() {
+        val json = """
+            {"translation":"Hoy hace buen tiempo.",
+             "chunks":[{"chunk":"今日は","meaning":"hoy","grammar":"は marca el tema."}],
+             "note":"El tema no es el sujeto."}
+        """.trimIndent()
+        val result = OpenAiTranslator.parseResponse(
+            """{"choices":[{"message":{"role":"assistant","content":${json.toJsonString()}}}]}""",
+            TranslationConfig(structured = true),
+        )
+        val breakdown = result.breakdown
+        Assertions.assertNotNull(breakdown)
+        Assertions.assertEquals("Hoy hace buen tiempo.", breakdown!!.translation)
+        Assertions.assertEquals(1, breakdown.chunks.size)
+        Assertions.assertEquals("今日は", breakdown.chunks[0].chunk)
+        // text always carries the same content for anything that only reads text.
+        Assertions.assertTrue(result.text.contains("今日は"), result.text)
+        Assertions.assertTrue(result.text.contains("El tema no es el sujeto."), result.text)
+    }
+
+    @Test
+    fun `a non-schema answer in structured mode falls back to raw text`() {
+        // A refusal or a truncated answer must not surface as an error.
+        val result = OpenAiTranslator.parseResponse(
+            """{"choices":[{"message":{"role":"assistant","content":"No puedo ayudar con eso."}}]}""",
+            TranslationConfig(structured = true),
+        )
+        Assertions.assertNull(result.breakdown)
+        Assertions.assertEquals("No puedo ayudar con eso.", result.text)
+    }
+
+    @Test
+    fun `an empty breakdown is not treated as usable`() {
+        Assertions.assertFalse(SentenceBreakdown().isUsable)
+        Assertions.assertTrue(SentenceBreakdown(translation = "Hola").isUsable)
+        Assertions.assertTrue(
+            SentenceBreakdown(chunks = listOf(BreakdownChunk(chunk = "今日"))).isUsable,
+        )
     }
 
     @Test
