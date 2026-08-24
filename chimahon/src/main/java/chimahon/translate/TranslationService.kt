@@ -9,6 +9,7 @@ import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Response
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
@@ -24,6 +25,8 @@ import kotlin.coroutines.resumeWithException
 class TranslationService(
     private val preferences: TranslationPreferences,
     private val client: OkHttpClient = defaultClient(),
+    /** Where the cache survives a restart. Null keeps it in memory only. */
+    private val cacheFile: File? = null,
 ) {
 
     private val cache = object : LinkedHashMap<String, TranslationResult>(16, 0.75f, true) {
@@ -31,6 +34,7 @@ class TranslationService(
             size > CACHE_SIZE
     }
     private val cacheMutex = Mutex()
+    private var loadedFromDisk = false
 
     /**
      * Reads the settings for one button into a config, tagged with the profile's
@@ -119,14 +123,42 @@ class TranslationService(
         }
 
         val key = cacheKey(sentence, config)
-        cacheMutex.withLock { cache[key] }?.let { return it }
+        cacheMutex.withLock {
+            ensureLoaded()
+            cache[key]
+        }?.let { return it }
 
         val result = request(sentence, config)
-        cacheMutex.withLock { cache[key] = result }
+
+        val snapshot = cacheMutex.withLock {
+            cache[key] = result
+            // Eldest first, so reloading rebuilds the same LRU order.
+            cache.entries.map { it.key to it.value }
+        }
+        cacheFile?.let { file ->
+            withContext(Dispatchers.IO) { TranslationCacheStore.save(file, snapshot) }
+        }
         return result
     }
 
-    suspend fun clearCache() = cacheMutex.withLock { cache.clear() }
+    suspend fun clearCache() = cacheMutex.withLock {
+        cache.clear()
+        loadedFromDisk = true
+        cacheFile?.delete()
+        Unit
+    }
+
+    /**
+     * Call holding [cacheMutex]. Reads the stored entries in once per process,
+     * off the main thread — this runs from a popup composition.
+     */
+    private suspend fun ensureLoaded() {
+        if (loadedFromDisk) return
+        loadedFromDisk = true
+        val file = cacheFile ?: return
+        withContext(Dispatchers.IO) { TranslationCacheStore.load(file) }
+            .forEach { (key, result) -> cache[key] = result }
+    }
 
     private suspend fun request(sentence: String, config: TranslationConfig): TranslationResult {
         val translator = Translator.forProvider(config.provider)

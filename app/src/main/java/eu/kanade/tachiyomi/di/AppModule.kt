@@ -14,6 +14,7 @@ import chimahon.ocr.LensClient
 import chimahon.ocr.OcrCacheManager
 import chimahon.translate.TranslationPreferences
 import chimahon.translate.TranslationService
+import java.io.File
 import com.canopus.chimareader.data.NovelCategoryStorage
 import com.canopus.chimareader.ui.reader.NovelReaderActivity
 import com.canopus.chimareader.ttusync.SyncSettingsRepository
@@ -292,7 +293,14 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { WordAudioService(app) }
 
         addSingletonFactory<TranslationPreferences> { get<DictionaryPreferences>() }
-        addSingletonFactory { TranslationService(get()) }
+        addSingletonFactory {
+            TranslationService(
+                preferences = get(),
+                // filesDir rather than cacheDir: the point is that a sentence
+                // stays paid-for across restarts, and the system empties cacheDir.
+                cacheFile = File(app.filesDir, "translation_cache.json"),
+            )
+        }
 
         addSingletonFactory { LensClient() }
         addSingletonFactory { LocalOcrBridge(app) }

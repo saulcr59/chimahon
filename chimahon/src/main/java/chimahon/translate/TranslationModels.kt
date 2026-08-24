@@ -159,6 +159,7 @@ data class TranslationConfig(
 }
 
 /** A finished translation, ready to be shown under the sentence. */
+@kotlinx.serialization.Serializable
 data class TranslationResult(
     val text: String,
     val provider: String,
